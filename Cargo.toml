@@ -1,6 +1,6 @@
 [package]
 name = "rsedlib"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 
 description = "rust binding of edlib"

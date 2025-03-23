@@ -95,7 +95,8 @@ pub struct EdlibAlignResult {
     pub status: ::std::os::raw::c_int,
     #[doc = " -1 if k is non-negative and edit distance is larger than k."]
     pub editDistance: ::std::os::raw::c_int,
-    #[doc = " Array of zero-based positions in target where optimal alignment paths end.\n If gap after query is penalized, gap counts as part of query (NW), otherwise not.\n Set to NULL if edit distance is larger than k.\n If you do not free whole result object using edlibFreeAlignResult(), do not forget to use free()."]
+    #[doc = " Array of zero-based positions in target 
+     optimal alignment paths end.\n If gap after query is penalized, gap counts as part of query (NW), otherwise not.\n Set to NULL if edit distance is larger than k.\n If you do not free whole result object using edlibFreeAlignResult(), do not forget to use free()."]
     pub endLocations: *mut ::std::os::raw::c_int,
     #[doc = " Array of zero-based positions in target where optimal alignment paths start,\n they correspond to endLocations.\n If gap before query is penalized, gap counts as part of query (NW), otherwise not.\n Set to NULL if not calculated or if edit distance is larger than k.\n If you do not free whole result object using edlibFreeAlignResult(), do not forget to use free()."]
     pub startLocations: *mut ::std::os::raw::c_int,

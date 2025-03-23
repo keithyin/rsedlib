@@ -1,6 +1,6 @@
 use std::ffi::CStr;
 
-use edlib_sys::edlibAlignmentToCigar;
+use edlib_sys::{edlibAlignmentToCigar, EDLIB_STATUS_OK};
 
 pub mod edlib_sys;
 
@@ -18,13 +18,32 @@ impl EdlibAlignResult {
         }
     }
 
+    pub fn target_start_ends(&self) -> Vec<(usize, usize)> {
+        let mut start_ends = Vec::new();
+        if self.edlib_res.numLocations > 0 {
+            for i in 0..self.edlib_res.numLocations {
+                unsafe {
+                    let start = *self.edlib_res.startLocations.add(i as usize);
+                    let end = *self.edlib_res.endLocations.add(i as usize);
+                    start_ends.push((start as usize, end as usize));
+                }
+            }
+        }
+
+        start_ends
+    }
+
+    pub fn distance(&self) -> i32 {
+        self.edlib_res.editDistance
+    }
+
     pub fn cigar_str(&mut self, eqx: bool) -> Option<&'_ CStr> {
         if self.edlib_res.alignment.is_null() {
             return None;
         }
 
         if let Some(cigar_str) = self.cigar_str {
-            return unsafe { Some(CStr::from_ptr(cigar_str) )};
+            return unsafe { Some(CStr::from_ptr(cigar_str)) };
         }
 
         let cigar_fmt = if eqx {
@@ -67,8 +86,8 @@ pub fn edlib_align(
     query: &[u8],
     target: &[u8],
     config: edlib_sys::EdlibAlignConfig,
-) -> EdlibAlignResult {
-    unsafe {
+) -> Result<EdlibAlignResult, String> {
+    let res: EdlibAlignResult = unsafe {
         edlib_sys::edlibAlign(
             query.as_ptr() as *const i8,
             query.len() as i32,
@@ -77,6 +96,15 @@ pub fn edlib_align(
             config,
         )
         .into()
+    };
+
+    if res.edlib_res.status != EDLIB_STATUS_OK as i32 {
+        Err(format!(
+            "Edlib alignment failed with status: {}",
+            res.edlib_res.status
+        ))
+    } else {
+        Ok(res)
     }
 }
 
@@ -95,8 +123,8 @@ mod tests {
             additionalEqualities: std::ptr::null(),
             additionalEqualitiesLength: 0,
         };
-        let mut aln_res = edlib_align(query, target, config);
+        let aln_res = edlib_align(query, target, config);
         println!("{:?}", aln_res);
-        println!("{:?}", aln_res.cigar_str(true));
+        println!("{:?}", aln_res.unwrap().cigar_str(true));
     }
 }
