@@ -1,0 +1,3 @@
+[submodule "edlib"]
+	path = edlib
+	url = git@github.com:Martinsos/edlib.git
