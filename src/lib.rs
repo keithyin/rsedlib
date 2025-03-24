@@ -1,8 +1,11 @@
 use std::ffi::CStr;
 
-use edlib_sys::{edlibAlignmentToCigar, EDLIB_STATUS_OK};
+use edlib_sys::{edlibAlignmentToCigar, EdlibAlignConfig, EDLIB_STATUS_OK};
+use param::EdlibAlignParam;
 
 pub mod edlib_sys;
+
+pub mod param;
 
 #[derive(Debug)]
 pub struct EdlibAlignResult {
@@ -85,8 +88,28 @@ impl Drop for EdlibAlignResult {
 pub fn edlib_align(
     query: &[u8],
     target: &[u8],
-    config: edlib_sys::EdlibAlignConfig,
+    param: &EdlibAlignParam,
 ) -> Result<EdlibAlignResult, String> {
+    let config = EdlibAlignConfig {
+        k: param.k(),
+        mode: match param.mode() {
+            param::AlignMode::Global => edlib_sys::EdlibAlignMode_EDLIB_MODE_NW,
+            param::AlignMode::Prefix => edlib_sys::EdlibAlignMode_EDLIB_MODE_SHW,
+            param::AlignMode::Infix => edlib_sys::EdlibAlignMode_EDLIB_MODE_HW,
+        },
+        task: match param.task() {
+            param::AlignTask::Distance => edlib_sys::EdlibAlignTask_EDLIB_TASK_DISTANCE,
+            param::AlignTask::Locations => edlib_sys::EdlibAlignTask_EDLIB_TASK_LOC,
+            param::AlignTask::Path => edlib_sys::EdlibAlignTask_EDLIB_TASK_PATH,
+        },
+        additionalEqualities: if param.additional_eq_pairs().len() > 0 {
+            param.additional_eq_pairs().as_ptr()
+        } else {
+            std::ptr::null()
+        },
+        additionalEqualitiesLength: param.additional_eq_pairs().len() as i32,
+    };
+
     let res: EdlibAlignResult = unsafe {
         edlib_sys::edlibAlign(
             query.as_ptr() as *const i8,
@@ -116,14 +139,8 @@ mod tests {
     fn test_edlib_align() {
         let query = b"ACGT";
         let target = b"ACGT";
-        let config = edlib_sys::EdlibAlignConfig {
-            k: 0,
-            mode: edlib_sys::EdlibAlignMode_EDLIB_MODE_HW,
-            task: edlib_sys::EdlibAlignTask_EDLIB_TASK_LOC,
-            additionalEqualities: std::ptr::null(),
-            additionalEqualitiesLength: 0,
-        };
-        let aln_res = edlib_align(query, target, config);
+        
+        let aln_res = edlib_align(query, target, &EdlibAlignParam::default());
         println!("{:?}", aln_res);
         println!("{:?}", aln_res.unwrap().cigar_str(true));
     }
