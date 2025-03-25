@@ -1,6 +1,6 @@
 [package]
 name = "rsedlib"
-version = "0.0.3"
+version = "0.1.0"
 edition = "2021"
 
 description = "rust binding of edlib"
@@ -9,6 +9,3 @@ repository ="https://github.com/keithyin/rsedlib"
 
 [dependencies]
 libc="0.2"
-
-[build-dependencies]
-cmake = "0.1"
