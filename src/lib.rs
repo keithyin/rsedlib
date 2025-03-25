@@ -191,7 +191,6 @@ mod tests {
         let target = b"telephone";
 
         let mut param = EdlibAlignParam::default();
-        param.set_k((query.len() / 2) as i32);
         // param.set_mode(param::AlignMode::Global);
         param.set_task(param::AlignTask::Path);
         param.set_cigar_fmt(param::CigarFmt::Extended);
