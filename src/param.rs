@@ -42,10 +42,11 @@ impl Default for CigarFmt {
 }
 
 pub struct EdlibAlignParam {
-    /// Set k to non-negative value to tell edlib that edit distance is not larger than k
+    ///  Set k to non-negative value to tell edlib that edit distance is not larger than k
     ///  Smaller k can significantly improve speed of computation.
     ///  If edit distance is larger than k, edlib will set edit distance to -1.
     ///  Set k to negative value and edlib will internally auto-adjust k until score is found.
+    ///  Set to -1 (default) to have no limit on edit distance.
     k: i32,
 
     mode: AlignMode,
@@ -132,7 +133,7 @@ impl EdlibAlignParam {
 impl Default for EdlibAlignParam {
     fn default() -> Self {
         EdlibAlignParam {
-            k: 0,
+            k: -1,
             mode: AlignMode::default(),
             task: AlignTask::default(),
             cigar_fmt: CigarFmt::default(),
