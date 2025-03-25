@@ -115,7 +115,7 @@ pub fn edlib_align(
         .into()
     };
 
-    println!("{:?}", edlib_raw_res);
+    // println!("{:?}", edlib_raw_res);
 
     let align_cigar_str = if aln_param.task() == param::AlignTask::Path
         && aln_param.cigar_fmt() != param::CigarFmt::NoCigar
