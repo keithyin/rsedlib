@@ -16,7 +16,7 @@ pub(crate) fn alignment_to_cigar(alignment: &[u8], extended: bool) -> Option<Str
 
     // Maps a move code from the alignment to the char in the CIGAR.
     //                 0    1    2    3
-    let mut code_to_char = [b'=', b'I', b'D', b'X'];
+    let mut code_to_char = *b"=IDX";
     if !extended {
         code_to_char[0] = b'M';
         code_to_char[3] = b'M';
