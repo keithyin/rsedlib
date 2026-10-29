@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  # 供 release.yml 通过 `uses: ./.github/workflows/ci.yml` 复用，
+  # 保证打 tag 时跑的是同一套 CI。
+  workflow_call:
+
+# 同一分支/PR 的新提交取消旧任务；tag 发布由 release.yml 自行串行，这里不干扰。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --locked --all-targets --verbose
+
+      - name: Run tests
+        run: cargo test --locked --verbose
+
+      # 位并行实现依赖 wrapping/移位运算，overflow checks 关闭后行为可能不同，
+      # release 模式再跑一遍对拍测试。
+      - name: Run tests (release)
+        run: cargo test --locked --release --verbose
+
+  lint:
+    name: Lint (fmt, clippy, doc)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry & build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      # 文档是 crates.io/docs.rs 的门面，intra-doc 链接 / 代码块编译错误在这里失败。
+      - name: Check documentation
+        run: cargo doc --locked --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      # 提前验证 crates.io 打包（元数据/文件列表/大小），避免打 tag 后才发现。
+      - name: Check crates.io packaging
+        run: cargo package --locked

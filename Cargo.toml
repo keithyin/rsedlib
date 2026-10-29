@@ -1,11 +1,17 @@
 [package]
 name = "rsedlib"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 
-description = "rust binding of edlib"
+description = "Pure Rust implementation of the edlib edit distance algorithms"
 license = "MIT"
-repository ="https://github.com/keithyin/rsedlib"
+repository = "https://github.com/keithyin/rsedlib"
+documentation = "https://docs.rs/rsedlib"
+readme = "README.md"
+keywords = ["bioinformatics", "edit-distance", "sequence-alignment", "myers"]
+categories = ["algorithms", "science"]
+# .codebuddy/（助手工作目录）、scripts/（本地批处理脚本）与 CI 配置不属于库内容，
+# 不打进 crates.io 包。
+exclude = [".codebuddy/**", "scripts/**", ".github/**"]
 
 [dependencies]
-libc="0.2"

@@ -1,44 +1,32 @@
-use std::ffi::c_char;
+/// Defines two given characters as equal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EdlibEqualityPair {
+    pub first: u8,
+    pub second: u8,
+}
 
-use crate::edlib_sys::EdlibEqualityPair;
-
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum AlignMode {
+    #[default]
     Global,
     Prefix,
     Infix,
 }
 
-impl Default for AlignMode {
-    fn default() -> Self {
-        AlignMode::Global
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum AlignTask {
+    #[default]
     Distance,
     Locations,
     Path,
 }
 
-impl Default for AlignTask {
-    fn default() -> Self {
-        AlignTask::Distance
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum CigarFmt {
+    #[default]
     NoCigar,
     Standard,
     Extended,
-}
-
-impl Default for CigarFmt {
-    fn default() -> Self {
-        CigarFmt::NoCigar
-    }
 }
 
 pub struct EdlibAlignParam {
@@ -62,7 +50,7 @@ pub struct EdlibAlignParam {
     ///  This way you can extend edlib's definition of equality (which is that each character is equal only to itself).
     ///  This can be useful if you have some wildcard characters that should match multiple other characters,
     ///  or e.g. if you want edlib to be case insensitive.
-    ///  Can be set to NULL if there are none.
+    ///  Can be empty if there are none.
     additional_eq_pairs: Vec<EdlibEqualityPair>,
 }
 
@@ -80,16 +68,16 @@ impl EdlibAlignParam {
         self.additional_eq_pairs = eq_pairs
             .into_iter()
             .map(|(a, b)| EdlibEqualityPair {
-                first: a as c_char,
-                second: b as c_char,
+                first: a,
+                second: b,
             })
             .collect();
     }
 
     pub fn add_eq_pair(&mut self, eq_pair: (u8, u8)) {
         self.additional_eq_pairs.push(EdlibEqualityPair {
-            first: eq_pair.0 as c_char,
-            second: eq_pair.1 as c_char,
+            first: eq_pair.0,
+            second: eq_pair.1,
         });
     }
 

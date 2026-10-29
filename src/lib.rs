@@ -1,81 +1,35 @@
-use std::{ffi::CStr, ops::Deref};
+//! Pure Rust implementation of the [edlib](https://github.com/Martinsos/edlib)
+//! edit distance algorithms.
+//!
+//! The public API mirrors the previous C/C++ binding, so existing callers keep
+//! working unchanged, but no C++ toolchain, `cmake` or `libc` is needed anymore.
+//!
+//! ```no_run
+//! use rsedlib::{edlib_align, param::{AlignTask, CigarFmt, EdlibAlignParam}};
+//!
+//! let mut param = EdlibAlignParam::default();
+//! param.set_task(AlignTask::Path);
+//! param.set_cigar_fmt(CigarFmt::Extended);
+//! let res = edlib_align(b"elephant", b"telephone", &param).unwrap();
+//! assert_eq!(res.edit_distance, 3);
+//! assert_eq!(res.cigar.as_deref(), Some("1D5=1X1=1X"));
+//! ```
 
-use edlib_sys::{edlibAlignmentToCigar, EdlibAlignConfig, EDLIB_STATUS_OK};
-use param::EdlibAlignParam;
+#![deny(unsafe_code)]
 
-pub mod edlib_sys;
+use param::{AlignTask, CigarFmt, EdlibAlignParam};
+
+mod alignment;
+mod alphabet;
+mod cigar;
+mod myers;
+mod search;
+mod traceback;
 
 pub mod param;
 pub mod utils;
 
-#[derive(Debug)]
-struct AlignResultGuard(edlib_sys::EdlibAlignResult);
-impl AlignResultGuard {
-    fn target_start_ends(&self) -> Vec<(usize, usize)> {
-        let mut start_ends = Vec::new();
-        if self.0.numLocations > 0 {
-            for i in 0..self.0.numLocations {
-                unsafe {
-                    let start = if self.startLocations.is_null() {
-                        0
-                    } else {
-                        *self.0.startLocations.add(i as usize)
-                    };
-                    let end = *self.0.endLocations.add(i as usize);
-                    start_ends.push((start as usize, end as usize));
-                }
-            }
-        }
-
-        start_ends
-    }
-}
-
-impl Deref for AlignResultGuard {
-    type Target = edlib_sys::EdlibAlignResult;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<edlib_sys::EdlibAlignResult> for AlignResultGuard {
-    fn from(result: edlib_sys::EdlibAlignResult) -> Self {
-        AlignResultGuard(result)
-    }
-}
-
-struct AlignCigarGuard(*mut i8);
-
-impl Deref for AlignCigarGuard {
-    type Target = *mut i8;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Drop for AlignCigarGuard {
-    fn drop(&mut self) {
-        unsafe {
-            libc::free(self.0 as *mut std::ffi::c_void);
-        }
-    }
-}
-
-impl From<*mut i8> for AlignCigarGuard {
-    fn from(cigar_str: *mut i8) -> Self {
-        AlignCigarGuard(cigar_str)
-    }
-}
-
-impl Drop for AlignResultGuard {
-    fn drop(&mut self) {
-        unsafe {
-            edlib_sys::edlibFreeAlignResult(self.0);
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EdlibAlignResult {
     pub edit_distance: i32,
     pub alphabet_length: i32,
@@ -83,86 +37,43 @@ pub struct EdlibAlignResult {
     pub cigar: Option<String>,
 }
 
+/// Aligns `query` against `target` following edlib's semantics.
+///
+/// `Err` is returned for invalid input only (e.g. sequences longer than
+/// `i32::MAX`). Note that, exactly like the C library, an edit distance of `-1`
+/// is reported when it is larger than the configured `k` and therefore no
+/// alignment could be found.
 pub fn edlib_align(
     query: &[u8],
     target: &[u8],
     aln_param: &EdlibAlignParam,
 ) -> Result<EdlibAlignResult, String> {
-    let config = EdlibAlignConfig {
-        k: aln_param.k(),
-        mode: match aln_param.mode() {
-            param::AlignMode::Global => edlib_sys::EdlibAlignMode_EDLIB_MODE_NW,
-            param::AlignMode::Prefix => edlib_sys::EdlibAlignMode_EDLIB_MODE_SHW,
-            param::AlignMode::Infix => edlib_sys::EdlibAlignMode_EDLIB_MODE_HW,
-        },
-        task: match aln_param.task() {
-            param::AlignTask::Distance => edlib_sys::EdlibAlignTask_EDLIB_TASK_DISTANCE,
-            param::AlignTask::Locations => edlib_sys::EdlibAlignTask_EDLIB_TASK_LOC,
-            param::AlignTask::Path => edlib_sys::EdlibAlignTask_EDLIB_TASK_PATH,
-        },
-        additionalEqualities: if aln_param.additional_eq_pairs().len() > 0 {
-            aln_param.additional_eq_pairs().as_ptr()
-        } else {
-            std::ptr::null()
-        },
-        additionalEqualitiesLength: aln_param.additional_eq_pairs().len() as i32,
-    };
+    let outcome = alignment::align(query, target, aln_param)?;
 
-    let edlib_raw_res: AlignResultGuard = unsafe {
-        edlib_sys::edlibAlign(
-            query.as_ptr() as *const i8,
-            query.len() as i32,
-            target.as_ptr() as *const i8,
-            target.len() as i32,
-            config,
-        )
-        .into()
-    };
+    let mut locations = Vec::with_capacity(outcome.end_locations.len());
+    for (i, &end) in outcome.end_locations.iter().enumerate() {
+        // When start locations are not calculated the C wrapper reported 0.
+        let start = outcome.start_locations.get(i).copied().unwrap_or(0) as usize;
+        locations.push((start, end as usize));
+    }
 
-    // println!("{:?}", edlib_raw_res);
-
-    let align_cigar_str = if aln_param.task() == param::AlignTask::Path
-        && aln_param.cigar_fmt() != param::CigarFmt::NoCigar
-        && edlib_raw_res.status == EDLIB_STATUS_OK as i32
+    let cigar = if aln_param.task() == AlignTask::Path && aln_param.cigar_fmt() != CigarFmt::NoCigar
     {
-        let cigar_fmt = match aln_param.cigar_fmt() {
-            param::CigarFmt::Standard => edlib_sys::EdlibCigarFormat_EDLIB_CIGAR_STANDARD,
-            param::CigarFmt::Extended => edlib_sys::EdlibCigarFormat_EDLIB_CIGAR_EXTENDED,
-            _ => panic!("Invalid cigar format"),
-        };
-
-        unsafe {
-            let cigar_str_guard: AlignCigarGuard = edlibAlignmentToCigar(
-                edlib_raw_res.alignment,
-                edlib_raw_res.alignmentLength,
-                cigar_fmt,
-            )
-            .into();
-            Some(
-                CStr::from_ptr(*cigar_str_guard)
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-            )
-        }
+        let extended = aln_param.cigar_fmt() == CigarFmt::Extended;
+        let alignment = outcome.alignment.as_deref().unwrap_or(&[]);
+        cigar::alignment_to_cigar(alignment, extended)
+            .map(Some)
+            .ok_or_else(|| "Invalid alignment path".to_string())?
     } else {
         None
     };
 
-    if edlib_raw_res.status != EDLIB_STATUS_OK as i32 {
-        Err(format!(
-            "Edlib alignment failed with status: {}",
-            edlib_raw_res.status
-        ))
-    } else {
-        // edlib_raw_res.target_start_ends()
-        Ok(EdlibAlignResult {
-            edit_distance: edlib_raw_res.editDistance,
-            alphabet_length: edlib_raw_res.alphabetLength,
-            locations: edlib_raw_res.target_start_ends(),
-            cigar: align_cigar_str,
-        })
-    }
+    Ok(EdlibAlignResult {
+        edit_distance: outcome.edit_distance,
+        alphabet_length: outcome.alphabet_length,
+        locations,
+        cigar,
+    })
 }
 
 #[cfg(test)]
@@ -195,7 +106,11 @@ mod tests {
         // param.set_mode(param::AlignMode::Global);
         param.set_task(param::AlignTask::Path);
         param.set_cigar_fmt(param::CigarFmt::Extended);
-        let aln_res = edlib_align(query, target, &param);
+        let aln_res = edlib_align(query, target, &param).unwrap();
         println!("{:?}", aln_res);
+        assert_eq!(aln_res.edit_distance, 3);
+        assert_eq!(aln_res.alphabet_length, 8);
+        assert_eq!(aln_res.locations, vec![(0, 8)]);
+        assert_eq!(aln_res.cigar.as_deref(), Some("1D5=1X1=1X"));
     }
 }

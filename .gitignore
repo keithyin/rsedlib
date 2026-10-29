@@ -1,1 +1,5 @@
 /target
+# AI 助手工作目录（本地规划文档），不进版本库
+.codebuddy/
+# cargo package / release 产物
+/dist
